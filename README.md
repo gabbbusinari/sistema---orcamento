@@ -33,6 +33,7 @@ O Sistema de Orçamento é uma aplicação desktop desenvolvida em Python para g
 
 ## Uso
 Execute o script principal:
+python inicio.py
 
 ## Autor
 Gabriel Businari
