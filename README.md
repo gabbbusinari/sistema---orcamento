@@ -20,11 +20,11 @@ O Sistema de Orçamento é uma aplicação desktop desenvolvida em Python para g
 ## Instalação
 1. Clone o repositório:
    ```
-   git clone https://github.com/seu-usuario/sistema---orcamento.git
+   git clone https://github.com/gabbbusinari/sistema---orcamento.git
    ```
 2. Navegue até o diretório do projeto:
    ```
-   cd sistema-orcamento
+   cd sistema---orcamento
    ```
 3. Instale as dependências:
    ```
