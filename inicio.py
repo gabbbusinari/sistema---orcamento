@@ -4,6 +4,7 @@ import openpyxl
 from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
 import os
+import re
 
 # Definição de uma classe para representar os itens do orçamento
 class ItemOrcamento:
@@ -38,18 +39,18 @@ def criar_planilha_orcamento(itens, nome_arquivo, numero_orcamento, data):
     # Verificar se há algum item com status válido
     has_status = any(item.status and item.status.lower() != "none" for item in itens)
 
-    cabecalhos = ["Instrumento", "Resolução (mm)", "Capacidade (mm)", "Código", "Modelo", "Fabricante", "Cliente", "Manutenção", "Valor Unitário"]
+    cabecalhos = ["#", "Instrumento", "Resolução (mm)", "Capacidade (mm)", "Código", "Modelo", "Fabricante", "Cliente", "Manutenção", "Valor Unitário"]
     if has_protocolo:
-        cabecalhos.insert(6, "Protocolo")
+        cabecalhos.insert(7, "Protocolo")
     if has_status:
         cabecalhos.append("Status")
     ws.append(cabecalhos)
 
     valor_total = 0
-    for item in itens:
-        row = [item.instrumento, item.resolucao, item.capacidade, item.codigo, item.modelo, item.fabricante, item.cliente, item.manutencao, item.valor_total]
+    for index, item in enumerate(itens, start=1):
+        row = [index, item.instrumento, item.resolucao, item.capacidade, item.codigo, item.modelo, item.fabricante, item.cliente, item.manutencao, item.valor_total]
         if has_protocolo:
-            row.insert(6, item.protocolo)
+            row.insert(7, item.protocolo)
         if has_status and item.status and item.status.lower() != "none":
             row.append(item.status)
         ws.append(row)
@@ -69,23 +70,57 @@ def criar_planilha_orcamento(itens, nome_arquivo, numero_orcamento, data):
         # Ajustar a largura da coluna
         ws.column_dimensions[col_letter].width = len(column_title) + 5
 
+    # Ajustar a largura das colunas automaticamente
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(cell.value)
+            except:
+                pass
+        adjusted_width = (max_length + 2) * 1.2
+        ws.column_dimensions[column_letter].width = adjusted_width
+
     # Ajustar a altura das linhas
     for row in ws.iter_rows(min_row=3, max_row=ws.max_row, min_col=1, max_col=len(cabecalhos)):
+        max_height = 0
         for cell in row:
             cell.alignment = Alignment(wrap_text=True, vertical="top")
+            if cell.value:
+                text_lines = str(cell.value).count('\n') + 1
+                text_height = text_lines * 15  # Estimativa de 15 unidades por linha
+                if text_height > max_height:
+                    max_height = text_height
+        ws.row_dimensions[row[0].row].height = max_height
 
     # Obter o nome do cliente do primeiro item (assumindo que todos os itens são do mesmo cliente)
     cliente = itens[0].cliente if itens else "Cliente_Desconhecido"
     
-    # Criar ou obter a pasta do cliente
+    # Sanitize the file name and path
+    cliente = re.sub(r'[<>:"/\\|?*]', '', cliente)  # Remove invalid characters
+    numero_orcamento = re.sub(r'[<>:"/\\|?*]', '', numero_orcamento)  # Remove invalid characters
+    nome_arquivo = re.sub(r'[<>:"/\\|?*]', '', nome_arquivo)  # Remove invalid characters
+    
+    # Replace forward slashes with hyphens in the date
+    data = data.replace('/', '-')
+    
+    # Create or get the client folder
     pasta_cliente = obter_pasta_cliente(cliente)
     
-    # Modificar o nome do arquivo para incluir o número do orçamento
+    # Modify the file name to include the quote number
     nome_arquivo_completo = f"Orcamento_{numero_orcamento}_{nome_arquivo}"
     caminho_completo = os.path.join(pasta_cliente, nome_arquivo_completo)
 
-    wb.save(caminho_completo)
-    messagebox.showinfo("Sucesso", f"Planilha '{nome_arquivo_completo}' criada com sucesso na pasta do cliente '{cliente}'!")
+    # Ensure the directory exists
+    os.makedirs(os.path.dirname(caminho_completo), exist_ok=True)
+
+    try:
+        wb.save(caminho_completo)
+        messagebox.showinfo("Sucesso", f"Planilha '{nome_arquivo_completo}' criada com sucesso na pasta do cliente '{cliente}'!")
+    except Exception as e:
+        messagebox.showerror("Erro", f"Não foi possível salvar a planilha. Erro: {str(e)}")
 
 # Função para adicionar um item à lista e limpar os campos de entrada
 def adicionar_item():
@@ -113,8 +148,11 @@ def adicionar_item():
     item = ItemOrcamento(instrumento, resolucao, capacidade, codigo, modelo, fabricante, cliente, manutencao, valor_total, protocolo, status)
     itens.append(item)
 
-    # Adicionar apenas os valores dos itens à Treeview
-    tree.insert("", "end", values=(instrumento, resolucao, capacidade, codigo, modelo, fabricante, protocolo, cliente, manutencao, f"{valor_total:.2f}", status))
+    # Obter o próximo número de item
+    next_number = len(itens)
+    
+    # Adicionar o item à Treeview com o número
+    tree.insert("", "end", values=(next_number, instrumento, resolucao, capacidade, codigo, modelo, fabricante, protocolo, cliente, manutencao, f"{valor_total:.2f}", status))
 
     # Limpar os campos de entrada
     instrumento_entry.delete(0, tk.END)
@@ -148,17 +186,17 @@ def editar_item(event=None):
     selected_item = tree.selection()
     if selected_item:
         item_index = tree.index(selected_item[0])
-        instrumento = tree.item(selected_item, 'values')[0]
-        resolucao = tree.item(selected_item, 'values')[1]
-        capacidade = tree.item(selected_item, 'values')[2]
-        codigo = tree.item(selected_item, 'values')[3]
-        modelo = tree.item(selected_item, 'values')[4]
-        fabricante = tree.item(selected_item, 'values')[5]
-        protocolo = tree.item(selected_item, 'values')[6]
-        cliente = tree.item(selected_item, 'values')[7]
-        manutencao = tree.item(selected_item, 'values')[8]
-        valor_total = float(tree.item(selected_item, 'values')[9])
-        status = tree.item(selected_item, 'values')[10]
+        instrumento = tree.item(selected_item, 'values')[1]
+        resolucao = tree.item(selected_item, 'values')[2]
+        capacidade = tree.item(selected_item, 'values')[3]
+        codigo = tree.item(selected_item, 'values')[4]
+        modelo = tree.item(selected_item, 'values')[5]
+        fabricante = tree.item(selected_item, 'values')[6]
+        protocolo = tree.item(selected_item, 'values')[7]
+        cliente = tree.item(selected_item, 'values')[8]
+        manutencao = tree.item(selected_item, 'values')[9]
+        valor_total = float(tree.item(selected_item, 'values')[10])
+        status = tree.item(selected_item, 'values')[11]
 
         instrumento_entry.delete(0, tk.END)
         instrumento_entry.insert(0, instrumento)
@@ -205,7 +243,7 @@ def salvar_edicao():
     item = ItemOrcamento(instrumento, resolucao, capacidade, codigo, modelo, fabricante, cliente, manutencao, valor_total, protocolo, status)
     itens.append(item)
 
-    tree.insert("", "end", values=(instrumento, resolucao, capacidade, codigo, modelo, fabricante, protocolo, cliente, manutencao, valor_total, status))
+    tree.insert("", "end", values=(len(itens), instrumento, resolucao, capacidade, codigo, modelo, fabricante, protocolo, cliente, manutencao, valor_total, status))
 
     instrumento_entry.delete(0, tk.END)
     resolucao_entry.delete(0, tk.END)
@@ -253,38 +291,39 @@ def importar_planilha():
         tree.delete(row)
 
     # Ler os dados da planilha e adicionar à lista de itens
-    for row in ws.iter_rows(min_row=3, values_only=True):  # Começar da terceira linha
-        if any(row) and not row[0].startswith("Valor Total"):  # Verificar se a linha não está vazia e não é a linha de valor total
+    for index, row in enumerate(ws.iter_rows(min_row=3, values_only=True), start=1):
+        if any(row) and not row[0].startswith("Valor Total"):
             try:
                 # Converter os valores para o tipo correto
                 converted_row = [
-                    str(row[0]) if row[0] is not None else "",  # instrumento
-                    str(row[1]) if row[1] is not None else "",  # resolucao
-                    str(row[2]) if row[2] is not None else "",  # capacidade
-                    str(row[3]) if row[3] is not None else "",  # codigo
-                    str(row[4]) if row[4] is not None else "",  # modelo
-                    str(row[5]) if row[5] is not None else "",  # fabricante
-                    str(row[6]) if len(row) > 9 and row[6] is not None else "",  # protocolo
-                    str(row[7]) if len(row) > 9 and row[7] is not None else str(row[6]) if row[6] is not None else "",  # cliente
-                    str(row[8]) if len(row) > 9 and row[8] is not None else str(row[7]) if row[7] is not None else "",  # manutencao
-                    float(row[9]) if len(row) > 9 and row[9] is not None else float(row[8]) if row[8] is not None else 0.0,  # valor_total
-                    str(row[10]) if len(row) > 10 and row[10] is not None else ""  # status
+                    index,  # Adicionar o número do item
+                    str(row[1]) if row[1] is not None else "",  # instrumento
+                    str(row[2]) if row[2] is not None else "",  # resolucao
+                    str(row[3]) if row[3] is not None else "",  # capacidade
+                    str(row[4]) if row[4] is not None else "",  # codigo
+                    str(row[5]) if row[5] is not None else "",  # modelo
+                    str(row[6]) if row[6] is not None else "",  # fabricante
+                    str(row[7]) if len(row) > 9 and row[7] is not None else "",  # protocolo
+                    str(row[8]) if len(row) > 9 and row[8] is not None else str(row[7]) if row[7] is not None else "",  # cliente
+                    str(row[9]) if len(row) > 9 and row[9] is not None else str(row[8]) if row[8] is not None else "",  # manutencao
+                    float(row[10]) if len(row) > 9 and row[10] is not None else float(row[9]) if row[9] is not None else 0.0,  # valor_total
+                    str(row[11]) if len(row) > 10 and row[11] is not None else ""  # status
                 ]
                 
                 # Tratar o status
-                status = converted_row[10]
+                status = converted_row[11]
                 if not status or status.lower() == "none":
                     status = ""
                 
                 # Criar o item considerando a presença do protocolo e status
                 if len(row) > 10:  # Com protocolo e status
-                    item = ItemOrcamento(*converted_row[:10], status)
+                    item = ItemOrcamento(*converted_row[1:10], status)
                 elif len(row) > 9:  # Com protocolo, sem status
-                    item = ItemOrcamento(*converted_row[:10], "")
+                    item = ItemOrcamento(*converted_row[1:10], "")
                 else:  # Sem protocolo e sem status
-                    item = ItemOrcamento(*converted_row[:6], "", *converted_row[6:9], "")
+                    item = ItemOrcamento(*converted_row[1:6], "", *converted_row[6:9], "")
                 itens.append(item)
-                tree.insert("", "end", values=(*converted_row[:10], status))
+                tree.insert("", "end", values=converted_row)
             except ValueError as e:
                 print(f"Erro ao converter valor: {e}")
                 continue  # Pula para a próxima linha em caso de erro
@@ -385,8 +424,9 @@ edit_button = tk.Button(root, text="Editar Item", command=editar_item)
 edit_button.grid(row=15, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
 # Treeview para exibir os itens adicionados
-columns = ("instrumento", "resolucao", "capacidade", "codigo", "modelo", "fabricante", "protocolo", "cliente", "manutencao", "valor_total", "status")
+columns = ("numero", "instrumento", "resolucao", "capacidade", "codigo", "modelo", "fabricante", "protocolo", "cliente", "manutencao", "valor_total", "status")
 tree = ttk.Treeview(root, columns=columns, show="headings")
+tree.heading("numero", text="#")
 tree.heading("instrumento", text="Instrumento")
 tree.heading("resolucao", text="Resolução (mm)")
 tree.heading("capacidade", text="Capacidade (mm)")
@@ -399,6 +439,11 @@ tree.heading("manutencao", text="Manutenção")
 tree.heading("valor_total", text="Valor Total")
 tree.heading("status", text="Status")
 tree.grid(row=16, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
+
+# Adicionar scrollbar
+scrollbar = ttk.Scrollbar(root, orient="vertical", command=tree.yview)
+tree.configure(yscrollcommand=scrollbar.set)
+scrollbar.grid(row=16, column=2, sticky="ns")
 
 # Bind da tecla Del para deletar item
 root.bind("<Delete>", deletar_item)
