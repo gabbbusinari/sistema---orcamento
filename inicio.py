@@ -39,7 +39,7 @@ def criar_planilha_orcamento(itens, nome_arquivo, numero_orcamento, data):
     # Verificar se há algum item com status válido
     has_status = any(item.status and item.status.lower() != "none" for item in itens)
 
-    cabecalhos = ["#", "Instrumento", "Resolução (mm)", "Capacidade (mm)", "Código", "Modelo", "Fabricante", "Cliente", "Manutenção", "Valor Unitário"]
+    cabecalhos = ["Item", "Instrumento", "Resolução (mm)", "Capacidade (mm)", "Código", "Modelo", "Fabricante", "Cliente", "Manutenção", "Valor Unitário"]
     if has_protocolo:
         cabecalhos.insert(7, "Protocolo")
     if has_status:
@@ -292,41 +292,39 @@ def importar_planilha():
 
     # Ler os dados da planilha e adicionar à lista de itens
     for index, row in enumerate(ws.iter_rows(min_row=3, values_only=True), start=1):
-        if any(row) and not row[0].startswith("Valor Total"):
-            try:
-                # Converter os valores para o tipo correto
-                converted_row = [
-                    index,  # Adicionar o número do item
-                    str(row[1]) if row[1] is not None else "",  # instrumento
-                    str(row[2]) if row[2] is not None else "",  # resolucao
-                    str(row[3]) if row[3] is not None else "",  # capacidade
-                    str(row[4]) if row[4] is not None else "",  # codigo
-                    str(row[5]) if row[5] is not None else "",  # modelo
-                    str(row[6]) if row[6] is not None else "",  # fabricante
-                    str(row[7]) if len(row) > 9 and row[7] is not None else "",  # protocolo
-                    str(row[8]) if len(row) > 9 and row[8] is not None else str(row[7]) if row[7] is not None else "",  # cliente
-                    str(row[9]) if len(row) > 9 and row[9] is not None else str(row[8]) if row[8] is not None else "",  # manutencao
-                    float(row[10]) if len(row) > 9 and row[10] is not None else float(row[9]) if row[9] is not None else 0.0,  # valor_total
-                    str(row[11]) if len(row) > 10 and row[11] is not None else ""  # status
-                ]
-                
-                # Tratar o status
-                status = converted_row[11]
-                if not status or status.lower() == "none":
-                    status = ""
-                
-                # Criar o item considerando a presença do protocolo e status
-                if len(row) > 10:  # Com protocolo e status
-                    item = ItemOrcamento(*converted_row[1:10], status)
-                elif len(row) > 9:  # Com protocolo, sem status
-                    item = ItemOrcamento(*converted_row[1:10], "")
-                else:  # Sem protocolo e sem status
-                    item = ItemOrcamento(*converted_row[1:6], "", *converted_row[6:9], "")
-                itens.append(item)
-                tree.insert("", "end", values=converted_row)
-            except ValueError as e:
-                print(f"Erro ao converter valor: {e}")
-                continue  # Pula para a próxima linha em caso de erro
+        if any(row):
+            # Check if the first cell is not "Valor Total" (as string or as part of a string)
+            if not (isinstance(row[0], str) and "Valor Total" in row[0]):
+                try:
+                    # Converter os valores para o tipo correto
+                    converted_row = [
+                        str(row[1]) if len(row) > 1 and row[1] is not None else "",  # instrumento
+                        str(row[2]) if len(row) > 2 and row[2] is not None else "",  # resolucao
+                        str(row[3]) if len(row) > 3 and row[3] is not None else "",  # capacidade
+                        str(row[4]) if len(row) > 4 and row[4] is not None else "",  # codigo
+                        str(row[5]) if len(row) > 5 and row[5] is not None else "",  # modelo
+                        str(row[6]) if len(row) > 6 and row[6] is not None else "",  # fabricante
+                        str(row[8]) if len(row) > 8 and row[8] is not None else "",  # cliente
+                        str(row[9]) if len(row) > 9 and row[9] is not None else "",  # manutencao
+                        float(row[10]) if len(row) > 10 and row[10] is not None else 0.0,  # valor_total
+                        str(row[7]) if len(row) > 7 and row[7] is not None else "",  # protocolo
+                        str(row[11]) if len(row) > 11 and row[11] is not None else ""  # status
+                    ]
+                    
+                    # Tratar o status
+                    status = converted_row[10]
+                    if not status or status.lower() == "none":
+                        status = ""
+                    
+                    # Criar o item
+                    item = ItemOrcamento(*converted_row)
+                    itens.append(item)
+                    
+                    # Inserir na Treeview
+                    tree.insert("", "end", values=(index, *converted_row))
+                except ValueError as e:
+                    print(f"Erro ao converter valor na linha {index}: {e}")
+                    continue  # Pula para a próxima linha em caso de erro
 
     messagebox.showinfo("Sucesso", f"Planilha '{file_path}' importada com sucesso!")
 
@@ -426,7 +424,7 @@ edit_button.grid(row=15, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 # Treeview para exibir os itens adicionados
 columns = ("numero", "instrumento", "resolucao", "capacidade", "codigo", "modelo", "fabricante", "protocolo", "cliente", "manutencao", "valor_total", "status")
 tree = ttk.Treeview(root, columns=columns, show="headings")
-tree.heading("numero", text="#")
+tree.heading("numero", text="Item")
 tree.heading("instrumento", text="Instrumento")
 tree.heading("resolucao", text="Resolução (mm)")
 tree.heading("capacidade", text="Capacidade (mm)")
